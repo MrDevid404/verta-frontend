@@ -80,41 +80,55 @@ export interface UniversitiesResponse {
   universities: University[];
 }
 
+// ── Helper ─────────────────────────────────────────────────────────────────────
+/**
+ * Perform a fetch request that always expects JSON and throws a clear Error on non‑OK responses.
+ */
+async function requestJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
+  const response = await fetch(input, {
+    headers: {
+      "Accept": "application/json",
+      ...(init?.headers ?? {}),
+    },
+    ...init,
+  });
+
+  if (!response.ok) {
+    let errorMsg = `Request failed with ${response.status}`;
+    try {
+      const data = await response.json();
+      errorMsg = data.error ?? data.message ?? errorMsg;
+    } catch (_) {
+      // ignore JSON parse errors
+    }
+    throw new Error(errorMsg);
+  }
+
+  return (await response.json()) as T;
+}
+
 // ── API calls ────────────────────────────────────────────────────────────────
 
 export async function fetchQuestions(level: "JSS" | "SSS"): Promise<Question[]> {
-  const res = await fetch(`${BASE_URL}/api/aptitude/questions?level=${level}`);
-  if (!res.ok) {
-    const data = await res.json();
-    throw new Error(data.error ?? "Failed to load questions");
-  }
-  const data = await res.json();
-  return data.questions as Question[];
+  const data = await requestJson<{ questions: Question[] }>(
+    `${BASE_URL}/api/aptitude/questions?level=${level}`
+  );
+  return data.questions;
 }
 
 export async function submitAnswers(
   level: "JSS" | "SSS",
   answers: Answer[]
 ): Promise<AptitudeResult> {
-  const res = await fetch(`${BASE_URL}/api/aptitude/result`, {
+  return await requestJson<AptitudeResult>(`${BASE_URL}/api/aptitude/result`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ level, answers }),
   });
-  if (!res.ok) {
-    const data = await res.json();
-    throw new Error(data.error ?? "Submission failed");
-  }
-  return res.json() as Promise<AptitudeResult>;
 }
 
 export async function fetchCourse(courseId: number): Promise<Course> {
-  const res = await fetch(`${BASE_URL}/api/courses/${courseId}`);
-  if (!res.ok) {
-    const data = await res.json();
-    throw new Error(data.message ?? "Course not found");
-  }
-  return res.json() as Promise<Course>;
+  return await requestJson<Course>(`${BASE_URL}/api/courses/${courseId}`);
 }
 
 export async function fetchUniversities(
@@ -124,24 +138,14 @@ export async function fetchUniversities(
   const url = type
     ? `${BASE_URL}/api/courses/${courseId}/universities?type=${type}`
     : `${BASE_URL}/api/courses/${courseId}/universities`;
-  const res = await fetch(url);
-  if (!res.ok) {
-    const data = await res.json();
-    throw new Error(data.message ?? "No universities found");
-  }
-  return res.json() as Promise<UniversitiesResponse>;
+  return await requestJson<UniversitiesResponse>(url);
 }
 
 export async function sendChatMessage(message: string): Promise<string> {
-  const res = await fetch(`${BASE_URL}/api/chat`, {
+  const data = await requestJson<{ reply: string }>(`${BASE_URL}/api/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ message }),
   });
-  if (!res.ok) {
-    const data = await res.json();
-    throw new Error(data.error ?? "Olu is unavailable right now. Try again.");
-  }
-  const data = await res.json();
-  return data.reply as string;
+  return data.reply;
 }
